@@ -77,20 +77,22 @@ notifications.forEach((platform) => {
       row[2] = `\- Power level: ${row[2]}`;
       row[3] = `\- Rewards: ${row[3].substring(0, 2)}`;
 
-      const notificationText = `${row.join("\n")}`;
+      let ntfyRow = row.map((r) => r.substring(2, r.length));
+      let discordNotificationText = row.join("\n");
+      let ntfyNotificationText = ntfyRow.join("\n");
 
       notifications.forEach(async (platform) => {
         if (platform.toLowerCase() === "discord") {
           await axios.post(process.env.DISCORD_WEBHOOK, {
-            content: notificationText,
+            content: discordNotificationText,
           });
         }
 
         if (platform.toLowerCase() === "ntfy") {
           if (!process.env.NTFY_USERNAME || !process.env.NTFY_PASSWORD) {
-            await axios.post(process.env.NTFY_URL, notificationText);
+            await axios.post(process.env.NTFY_URL, ntfyNotificationText);
           } else {
-            await axios.post(process.env.NTFY_URL, notificationText, {
+            await axios.post(process.env.NTFY_URL, ntfyNotificationText, {
               auth: {
                 username: process.env.NTFY_USERNAME,
                 password: process.env.NTFY_PASSWORD,
