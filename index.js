@@ -3,9 +3,6 @@ require("dotenv").config();
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-const todayVbuckXPath = "/html/body/main/div[1]/div[1]/div[3]/div[2]/div[1]/div/div";
-const locationXPath = "/html/body/main/div[1]/div[1]/div[2]/div[1]/div[2]/div/table/tbody/tr/td[1]/span";
-
 const locations = {
   S: "Stonewood",
   P: "Plankerton",
@@ -45,35 +42,63 @@ notifications.forEach((platform) => {
     waitUntil: "load",
   });
 
-  await page.waitForSelector(`::-p-xpath(${todayVbuckXPath})`);
+  const tableData = await page.evaluate((locations) => {
+    const table = document.querySelector("table.summary-honorable.summary-wrapper:not([id])");
+    if (!table) return ["error table not found"];
 
-  const dailyVbuck = await (await page.$(`::-p-xpath(${todayVbuckXPath})`)).evaluate((el) => el.textContent.trim());
+    const rows = table.querySelectorAll("tr");
 
-  if (dailyVbuck > 0) {
-    const locationRaw = await (await page.$(`::-p-xpath(${locationXPath})`)).evaluate((el) => el.textContent.trim());
-    const locationActual = locations[locationRaw] ?? locationRaw;
+    const data = Array.from(rows).map((row) => {
+      const cells = row.querySelectorAll("td");
 
-    const notificationText = `Amount: ${dailyVbuck}\nLocation: ${locationActual}`;
+      return Array.from(cells).map((cell) => {
+        let src;
+        let mainText = cell.textContent.trim();
 
-    notifications.forEach(async (platform) => {
-      if (platform.toLowerCase() === "discord") {
-        await axios.post(process.env.DISCORD_WEBHOOK, {
-          content: notificationText,
-        });
-      }
+        if (mainText.length <= 0) src = cell.children[0].getAttribute("src");
+        return (
+          mainText ||
+          src
+            .substring(src.lastIndexOf("/") + 1, src.lastIndexOf("."))
+            .split("-")
+            .slice(2, 4)
+            .join(" ")
+        );
+      });
+    });
 
-      if (platform.toLowerCase() === "ntfy") {
-        if (!process.env.NTFY_USERNAME || !process.env.NTFY_PASSWORD) {
-          await axios.post(process.env.NTFY_URL, notificationText);
-        } else {
-          await axios.post(process.env.NTFY_URL, notificationText, {
-            auth: {
-              username: process.env.NTFY_USERNAME,
-              password: process.env.NTFY_PASSWORD,
-            },
+    return data;
+  }, locations);
+
+  if (tableData.length > 0) {
+    tableData.forEach((row) => {
+      row[0] = `## Location: ${locations[row[0]]}`;
+      row[1] = `\- Mission type: ${row[1]}`;
+      row[2] = `\- Power level: ${row[2]}`;
+      row[3] = `\- Rewards: ${row[3].substring(0, 2)}`;
+
+      const notificationText = `${row.join("\n")}`;
+
+      notifications.forEach(async (platform) => {
+        if (platform.toLowerCase() === "discord") {
+          await axios.post(process.env.DISCORD_WEBHOOK, {
+            content: notificationText,
           });
         }
-      }
+
+        if (platform.toLowerCase() === "ntfy") {
+          if (!process.env.NTFY_USERNAME || !process.env.NTFY_PASSWORD) {
+            await axios.post(process.env.NTFY_URL, notificationText);
+          } else {
+            await axios.post(process.env.NTFY_URL, notificationText, {
+              auth: {
+                username: process.env.NTFY_USERNAME,
+                password: process.env.NTFY_PASSWORD,
+              },
+            });
+          }
+        }
+      });
     });
   }
 
